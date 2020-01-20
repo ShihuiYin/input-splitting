@@ -6,12 +6,9 @@ import os
 import time
 
 import numpy as np
-np.random.seed(1234) # for reproducibility?
+np.random.seed(1234) # for reproducibility
 import argparse
 from ast import literal_eval as bool
-# specifying the gpu to use
-# import theano.sandbox.cuda
-# theano.sandbox.cuda.use('gpu1') 
 
 import lasagne
 import theano
@@ -26,23 +23,23 @@ from collections import OrderedDict
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CIFAR10 with input-splitting", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-bs', '--batch_size', dest='batch_size', type=int, default=100)
-    parser.add_argument('-sp', '--save_path', dest='save_path', default='cifar10_parameters.npz')
-    parser.add_argument('-ne', '--num_epochs', dest='num_epochs', type=int, default=500)
-    parser.add_argument('-ls', '--LR_start', dest='LR_start', type=float, default=0.005)
-    parser.add_argument('-lf', '--LR_finish', dest='LR_finish', type=float, default=3e-7)
-    parser.add_argument('-tr', '--train', dest='train', type=bool, default=True)
-    parser.add_argument('-st', '--stochastic', dest='stochastic', type=bool, default=False)
-    parser.add_argument('-nr', '--num_rows', dest='num_rows', type=int, default=64)
-    parser.add_argument('-mc', '--monte_carlo', dest='monte_carlo', type=int, default=1)
-    parser.add_argument('-rf', '--result_file', dest='result_file', default='cifar10_test_error_list.mat')
-    
-    
+    parser.add_argument('-bs', dest='batch_size', type=int, default=100, help='batch size')
+    parser.add_argument('-sp', dest='save_path', default='cifar10_parameters.npz', help='path to saved model')
+    parser.add_argument('-ne', dest='num_epochs', type=int, default=500, help='number of epochs')
+    parser.add_argument('-wp', dest='weight_prec', type=int, default=1, help='weight precision')
+    parser.add_argument('-ls', dest='LR_start', type=float, default=0.005, help='start learning rate')
+    parser.add_argument('-lf', dest='LR_finish', type=float, default=3e-7, help='finish learning rate')
+    parser.add_argument('-tr', dest='train', type=bool, default=True, help='training if true, else testing')
+    parser.add_argument('-st', dest='stochastic', type=bool, default=False, help='stochastic')
+    parser.add_argument('-nr', dest='num_rows', type=int, default=64, help='number of rows for mapping')
+    parser.add_argument('-mc', dest='monte_carlo', type=int, default=1, help='number of monte carlo runs')
+    parser.add_argument('-rf', dest='result_file', default='cifar10_test_error_list.mat', help='path to saved results')
     
     args = parser.parse_args()
     
     print (args)
     # BN parameters
+    weight_prec = args.weight_prec
     batch_size = args.batch_size
     print("batch_size = "+str(batch_size))
     # alpha is the exponential moving average factor
@@ -137,6 +134,7 @@ if __name__ == "__main__":
             cnn, 
             binary=binary,
             stochastic=stochastic,
+            weight_prec=weight_prec,
             H=H,
             W_LR_scale=W_LR_scale,
             num_filters=126, 
@@ -157,6 +155,7 @@ if __name__ == "__main__":
             cnn, 
             binary=binary,
             stochastic=stochastic,
+            weight_prec=weight_prec,
             H=H,
             W_LR_scale=W_LR_scale,
             max_fan_in=num_rows,
@@ -181,6 +180,7 @@ if __name__ == "__main__":
             cnn, 
             binary=binary,
             stochastic=stochastic,
+            weight_prec=weight_prec,
             H=H,
             W_LR_scale=W_LR_scale,
             max_fan_in=num_rows,
@@ -202,6 +202,7 @@ if __name__ == "__main__":
             cnn, 
             binary=binary,
             stochastic=stochastic,
+            weight_prec=weight_prec,
             H=H,
             W_LR_scale=W_LR_scale,
             max_fan_in=num_rows,
@@ -226,6 +227,7 @@ if __name__ == "__main__":
             cnn, 
             binary=binary,
             stochastic=stochastic,
+            weight_prec=weight_prec,
             H=H,
             W_LR_scale=W_LR_scale,
             max_fan_in=num_rows,
@@ -247,6 +249,7 @@ if __name__ == "__main__":
             cnn, 
             binary=binary,
             stochastic=stochastic,
+            weight_prec=weight_prec,
             H=H,
             W_LR_scale=W_LR_scale,
             max_fan_in=num_rows,
@@ -273,6 +276,7 @@ if __name__ == "__main__":
                 cnn, 
                 binary=binary,
                 stochastic=stochastic,
+                weight_prec=weight_prec,
                 H=H,
                 W_LR_scale=W_LR_scale,
                 max_fan_in=num_rows,
@@ -293,6 +297,7 @@ if __name__ == "__main__":
                 cnn, 
                 binary=binary,
                 stochastic=stochastic,
+                weight_prec=weight_prec,
                 H=H,
                 W_LR_scale=W_LR_scale,
                 max_fan_in=num_rows,
@@ -313,6 +318,7 @@ if __name__ == "__main__":
                 cnn, 
                 binary=binary,
                 stochastic=stochastic,
+                weight_prec=weight_prec,
                 H=H,
                 W_LR_scale=W_LR_scale,
                 max_fan_in=num_rows,
@@ -387,7 +393,10 @@ if __name__ == "__main__":
         for param in params:
             print(param.name)
             if param.name[-1] == "W":
-                param.set_value(binary_net.SignNumpy(param.get_value()))
+                if weight_prec == 1:
+                    param.set_value(binary_net.SignNumpy(param.get_value()))
+                elif weight_prec == 2:
+                    param.set_value(binary_net.hard_quaternarization(param.get_value()))
                 print(param.get_value())
         print('Running...')
         
