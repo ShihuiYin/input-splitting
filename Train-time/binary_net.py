@@ -35,6 +35,9 @@ round3 = Elemwise(round3_scalar)
 def hard_sigmoid(x):
     return T.clip((x+1.)/2.,0,1)
 
+def hard_quaternarization(x):
+    return (T.round(T.clip(x, -1.0, 1.0) * 1.5 + 1.5) - 1.5) / 1.5
+
 # The neurons' activations binarization function
 # It behaves like the sign function during forward propagation
 # And like:
@@ -48,7 +51,7 @@ def binary_activation(x):
     return round3(T.clip(x/2., 0, 1))
 
 import scipy.io as sio
-data = sio.loadmat('prob_binary_ref_0.mat')
+data = sio.loadmat('prob_chip14_column0_24k_single_SA_0p8V.mat')
 prob = data['prob'][:,0].astype('float32')
 num_rows = prob.shape[0] - 1
 prob = theano.shared(prob, name='prob', borrow=True)
@@ -138,16 +141,26 @@ def binarization(W,H,binary=True,deterministic=False,stochastic=False,srng=None)
     
     return Wb
 
+def quaternarization(W,H,binary=True,deterministic=False,stochastic=False,srng=None):
+    
+    # (deterministic == True) <-> test-time <-> inference-time
+    if not binary or (deterministic and stochastic):
+        Wb = W
+    else:
+        Wb = hard_quaternarization(W)
+    return Wb
+
 # This class extends the Lasagne DenseLayer to support BinaryConnect
 class DenseLayer(lasagne.layers.DenseLayer):
     
     def __init__(self, incoming, num_units, 
-        binary = True, stochastic = True, H=1.,W_LR_scale="Glorot", **kwargs):
+        binary = True, stochastic = True, H=1.,W_LR_scale="Glorot", weight_prec=1, **kwargs):
         
         self.binary = binary
         self.stochastic = stochastic
         
         self.H = H
+        self.weight_prec = weight_prec
         if H == "Glorot":
             num_inputs = int(np.prod(incoming.output_shape[1:]))
             self.H = np.float32(np.sqrt(1.5/ (num_inputs + num_units)))
@@ -169,8 +182,11 @@ class DenseLayer(lasagne.layers.DenseLayer):
             super(DenseLayer, self).__init__(incoming, num_units, **kwargs)
         
     def get_output_for(self, input, deterministic=False, **kwargs):
-        
-        self.Wb = binarization(self.W,self.H,self.binary,deterministic,self.stochastic,self._srng)
+        if self.weight_prec == 1:
+            self.Wb = binarization(self.W,self.H,self.binary,deterministic,self.stochastic,self._srng)
+        elif self.weight_prec == 2:
+            self.Wb = quaternarization(self.W,self.H,self.binary,deterministic,self.stochastic,self._srng)
+
         Wr = self.W
         self.W = self.Wb
             
@@ -185,11 +201,12 @@ class DenseLayer_Fanin_Limited(lasagne.layers.DenseLayer):
     
     def __init__(self, incoming, num_units, 
         binary = True, stochastic = True, H=1.,W_LR_scale="Glorot",
-        max_fan_in = 64, **kwargs):
+        max_fan_in = 64, weight_prec=1, **kwargs):
         
         self.binary = binary
         self.stochastic = stochastic
         self.max_fan_in = max_fan_in
+        self.weight_prec = weight_prec
         self.H = H
         if H == "Glorot":
             num_inputs = int(np.prod(incoming.output_shape[1:]))
@@ -218,8 +235,10 @@ class DenseLayer_Fanin_Limited(lasagne.layers.DenseLayer):
         scale = np.float32(1./np.sqrt(1.5/(self.num_groups+num_units)))
         # self.W_group = self.add_param(lasagne.init.Uniform((-scale, scale)), (self.num_groups,), name="W_group")
     def get_output_for(self, input, deterministic=False, **kwargs):
-        
-        self.Wb = binarization(self.W,self.H,self.binary,deterministic,self.stochastic,self._srng)
+        if self.weight_prec == 1:
+            self.Wb = binarization(self.W,self.H,self.binary,deterministic,self.stochastic,self._srng)
+        elif self.weight_prec == 2:
+            self.Wb = quaternarization(self.W,self.H,self.binary,deterministic,self.stochastic,self._srng)
         Wr = self.W
         self.W = self.Wb
         
@@ -245,12 +264,13 @@ class DenseLayer_Fanin_Limited(lasagne.layers.DenseLayer):
 class Conv2DLayer(lasagne.layers.Conv2DLayer):
     
     def __init__(self, incoming, num_filters, filter_size,
-        binary = True, stochastic = True, H=1.,W_LR_scale="Glorot", **kwargs):
+        binary = True, stochastic = True, H=1.,W_LR_scale="Glorot", weight_prec=1, **kwargs):
         
         self.binary = binary
         self.stochastic = stochastic
         
         self.H = H
+        self.weight_prec = weight_prec
         if H == "Glorot":
             num_inputs = int(np.prod(filter_size)*incoming.output_shape[1])
             num_units = int(np.prod(filter_size)*num_filters) # theoretically, I should divide num_units by the pool_shape
@@ -274,8 +294,10 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
             super(Conv2DLayer, self).__init__(incoming, num_filters, filter_size, **kwargs)    
     
     def convolve(self, input, deterministic=False, **kwargs):
-        
-        self.Wb = binarization(self.W,self.H,self.binary,deterministic,self.stochastic,self._srng)
+        if self.weight_prec == 1:
+            self.Wb = binarization(self.W,self.H,self.binary,deterministic,self.stochastic,self._srng)
+        elif self.weight_prec == 2:
+            self.Wb = quaternarization(self.W,self.H,self.binary,deterministic,self.stochastic,self._srng)
         Wr = self.W
         self.W = self.Wb
             
@@ -288,12 +310,13 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
 class Conv2DLayer_Fanin_Limited(lasagne.layers.Conv2DLayer):
     
     def __init__(self, incoming, num_filters, filter_size, max_fan_in =64,
-        binary = True, stochastic = True, H=1.,W_LR_scale="Glorot", **kwargs):
+        binary = True, stochastic = True, H=1.,W_LR_scale="Glorot", weight_prec=1, **kwargs):
         
         self.binary = binary
         self.stochastic = stochastic
         self.max_fan_in = max_fan_in
         self.H = H
+        self.weight_prec = weight_prec
         if H == "Glorot":
             num_inputs = int(np.prod(filter_size)*incoming.output_shape[1])
             num_units = int(np.prod(filter_size)*num_filters) # theoretically, I should divide num_units by the pool_shape
@@ -321,8 +344,10 @@ class Conv2DLayer_Fanin_Limited(lasagne.layers.Conv2DLayer):
         # scale = np.float32(1./np.sqrt(1.5/self.num_groups))
         # self.W_group = self.add_param(lasagne.init.Uniform((-scale, scale)), (self.num_groups,), name="W_group")
     def convolve(self, input, deterministic=False, **kwargs):
-        
-        self.Wb = binarization(self.W,self.H,self.binary,deterministic,self.stochastic,self._srng)
+        if self.weight_prec == 1:
+            self.Wb = binarization(self.W,self.H,self.binary,deterministic,self.stochastic,self._srng)
+        elif self.weight_prec == 2:
+            self.Wb = quaternarization(self.W,self.H,self.binary,deterministic,self.stochastic,self._srng)
         Wr = self.W
         self.W = self.Wb
         
