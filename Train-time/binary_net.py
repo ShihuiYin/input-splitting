@@ -110,7 +110,7 @@ def twos_4bit(x):
 def SignNumpy(x):
     return np.float32(2.*np.greater_equal(x,0)-1.)
 def QuaternaryNumpy(x):
-    return (np.round(np.clip(x, -1.0, 1.0) * 1.5 + 1.5) - 1.5) / 1.5).astype('float32')
+    return ((np.round(np.clip(x, -1.0, 1.0) * 1.5 + 1.5) - 1.5) / 1.5).astype('float32')
 #The weights' binarization function, 
 # taken directly from the BinaryConnect github repository 
 # (which was made available by his authors)
