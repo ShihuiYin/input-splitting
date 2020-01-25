@@ -396,7 +396,7 @@ if __name__ == "__main__":
                 if weight_prec == 1:
                     param.set_value(binary_net.SignNumpy(param.get_value()))
                 elif weight_prec == 2:
-                    param.set_value(binary_net.hard_quaternarization(param.get_value()))
+                    param.set_value(binary_net.QuaternaryNumpy(param.get_value()))
                 print(param.get_value())
         print('Running...')
         
