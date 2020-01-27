@@ -60,7 +60,9 @@ def stochastic_round1(x, srng):
     prob_x = T.cast(srng.binomial(n=1, p=prob[x_int], size=T.shape(x)), theano.config.floatX) - 1.
     return T.cast(T.switch(prob_x,-1.,1.), theano.config.floatX)
     
-def stochastic_round(x, srng):
+def stochastic_round(x, srng, weight_prec=1):
+    if weight_prec == 2:
+        x = x * 3
     x_int = T.cast(x / 2 + num_rows / 2, 'int32')
     prob_x = 2. * T.cast(T.ge(prob[x_int], srng.uniform(low=0., high=1., size=T.shape(x))), theano.config.floatX) - 1.
     return prob_x
