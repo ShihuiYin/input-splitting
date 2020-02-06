@@ -126,7 +126,7 @@ if __name__ == "__main__":
     if args.size == 'heavy':
         sizes = [126, 126, 252, 252, 504, 512, 1024, 1024, 10]
     elif args.size == 'light':
-        sizes = [63, 63, 126, 126, 252, 256, 512, 512, 10]
+        sizes = [126, 126, 189, 189, 252, 256, 512, 512, 10]
     
     # Prepare Theano variables for inputs and targets
     input = T.tensor4('inputs')
