@@ -34,12 +34,16 @@ if __name__ == "__main__":
     parser.add_argument('-nr', dest='num_rows', type=int, default=64, help='number of rows for mapping')
     parser.add_argument('-mc', dest='monte_carlo', type=int, default=1, help='number of monte carlo runs')
     parser.add_argument('-rf', dest='result_file', default='cifar10_test_error_list.mat', help='path to saved results')
+    parser.add_argument('-sz', dest='size', default='heavy', help='model size (heavy or light)')
+    parser.add_argument('-sw', dest='sim_weight_variation', type=bool, default=False, help='simulate weight variation if true')
+    parser.add_argument('-an', dest='act_noise', type=float, default=0.0, help='activation noise')
     
     args = parser.parse_args()
     
     print (args)
     # BN parameters
     weight_prec = args.weight_prec
+    act_noise = args.act_noise
     batch_size = args.batch_size
     print("batch_size = "+str(batch_size))
     # alpha is the exponential moving average factor
@@ -55,7 +59,7 @@ if __name__ == "__main__":
     # print("activation = binary_net.binary_sigmoid_unit")
     num_rows = args.num_rows
     # BinaryConnect    
-    binary = True
+    binary = args.train
     print("binary = "+str(binary))
     stochastic = args.stochastic
     print("stochastic = "+str(stochastic))
@@ -119,6 +123,10 @@ if __name__ == "__main__":
     test_set.y = 2* test_set.y - 1.
 
     print('Building the CNN...') 
+    if args.size == 'heavy':
+        sizes = [126, 126, 252, 252, 504, 512, 1024, 1024, 10]
+    elif args.size == 'light':
+        sizes = [63, 63, 126, 126, 252, 256, 512, 512, 10]
     
     # Prepare Theano variables for inputs and targets
     input = T.tensor4('inputs')
@@ -137,7 +145,7 @@ if __name__ == "__main__":
             weight_prec=weight_prec,
             H=H,
             W_LR_scale=W_LR_scale,
-            num_filters=126, 
+            num_filters=sizes[0], 
             filter_size=(3, 3),
             pad=1,
             nonlinearity=lasagne.nonlinearities.identity)
@@ -159,9 +167,10 @@ if __name__ == "__main__":
             H=H,
             W_LR_scale=W_LR_scale,
             max_fan_in=num_rows,
-            num_filters=126, 
+            num_filters=sizes[1], 
             filter_size=(3, 3),
             pad=1,
+            act_noise=act_noise,
             nonlinearity=lasagne.nonlinearities.identity)
     
     cnn = lasagne.layers.MaxPool2DLayer(cnn, pool_size=(2, 2))
@@ -184,9 +193,10 @@ if __name__ == "__main__":
             H=H,
             W_LR_scale=W_LR_scale,
             max_fan_in=num_rows,
-            num_filters=252, 
+            num_filters=sizes[2], 
             filter_size=(3, 3),
             pad=1,
+            act_noise=act_noise,
             nonlinearity=lasagne.nonlinearities.identity)
     
     cnn = lasagne.layers.BatchNormLayer(
@@ -206,9 +216,10 @@ if __name__ == "__main__":
             H=H,
             W_LR_scale=W_LR_scale,
             max_fan_in=num_rows,
-            num_filters=252, 
+            num_filters=sizes[3], 
             filter_size=(3, 3),
             pad=1,
+            act_noise=act_noise,
             nonlinearity=lasagne.nonlinearities.identity)
     
     cnn = lasagne.layers.MaxPool2DLayer(cnn, pool_size=(2, 2))
@@ -231,9 +242,10 @@ if __name__ == "__main__":
             H=H,
             W_LR_scale=W_LR_scale,
             max_fan_in=num_rows,
-            num_filters=504, 
+            num_filters=sizes[4], 
             filter_size=(3, 3),
             pad=1,
+            act_noise=act_noise,
             nonlinearity=lasagne.nonlinearities.identity)
     
     cnn = lasagne.layers.BatchNormLayer(
@@ -253,9 +265,10 @@ if __name__ == "__main__":
             H=H,
             W_LR_scale=W_LR_scale,
             max_fan_in=num_rows,
-            num_filters=512, 
+            num_filters=sizes[5], 
             filter_size=(3, 3),
             pad=1,
+            act_noise=act_noise,
             nonlinearity=lasagne.nonlinearities.identity)
     
     cnn = lasagne.layers.MaxPool2DLayer(cnn, pool_size=(2, 2))
@@ -282,7 +295,8 @@ if __name__ == "__main__":
                 max_fan_in=num_rows,
                 nonlinearity=lasagne.nonlinearities.identity,
                 name='FC1',
-                num_units=1024)      
+                act_noise=act_noise,
+                num_units=sizes[6])      
                   
     cnn = lasagne.layers.BatchNormLayer(
             cnn,
@@ -303,7 +317,8 @@ if __name__ == "__main__":
                 max_fan_in=num_rows,
                 nonlinearity=lasagne.nonlinearities.identity,
                 name='FC2',
-                num_units=1024)      
+                act_noise=act_noise,
+                num_units=sizes[7])      
                   
     cnn = lasagne.layers.BatchNormLayer(
             cnn,
@@ -324,6 +339,7 @@ if __name__ == "__main__":
                 max_fan_in=num_rows,
                 nonlinearity=lasagne.nonlinearities.identity,
                 name='FC3',
+                act_noise=act_noise,
                 num_units=10)      
                   
     cnn = lasagne.layers.BatchNormLayer(
@@ -394,9 +410,20 @@ if __name__ == "__main__":
             print(param.name)
             if param.name[-1] == "W":
                 if weight_prec == 1:
-                    param.set_value(binary_net.SignNumpy(param.get_value()))
+                    if args.sim_weight_variation:
+                        W_bin = binary_net.SignNumpy(param.get_value())
+                        W_var = W_bin * np.random.normal(loc=1.0, scale=0.02, size=W_bin.shape).astype('float32')
+                        param.set_value(W_var)
+                    else:
+                        param.set_value(binary_net.SignNumpy(param.get_value()))
                 elif weight_prec == 2:
-                    param.set_value(binary_net.QuaternaryNumpy(param.get_value()))
+                    if args.sim_weight_variation:
+                        W_quat = binary_net.QuaternaryNumpy(param.get_value())
+                        W_var = W_quat * (abs(W_quat) == 1./3).astype('float32') * np.random.normal(loc=1.0, scale=0.2, size=W_quat.shape)
+                        W_var += W_quat * (abs(W_quat) == 1.0).astype('float32') * np.random.normal(loc=1.0, scale=0.04, size=W_quat.shape)
+                        param.set_value(W_var.astype('float32'))
+                    else:
+                        param.set_value(binary_net.QuaternaryNumpy(param.get_value()))
                 print(param.get_value())
         print('Running...')
         
