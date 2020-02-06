@@ -51,7 +51,8 @@ def binary_activation(x):
     return round3(T.clip(x/2., 0, 1))
 
 import scipy.io as sio
-data = sio.loadmat('prob_chip14_column0_24k_single_SA_0p8V.mat')
+#data = sio.loadmat('prob_chip14_column0_24k_single_SA_0p8V.mat') # for 1-bit weight
+data = sio.loadmat('prob_2bW_chip14.mat') # for 2-bit weight
 prob = data['prob'][:,0].astype('float32')
 num_rows = prob.shape[0] - 1
 prob = theano.shared(prob, name='prob', borrow=True)
@@ -205,7 +206,7 @@ class DenseLayer_Fanin_Limited(lasagne.layers.DenseLayer):
     
     def __init__(self, incoming, num_units, 
         binary = True, stochastic = True, H=1.,W_LR_scale="Glorot",
-        max_fan_in = 64, weight_prec=1, **kwargs):
+        max_fan_in = 64, weight_prec=1, act_noise=0, **kwargs):
         
         self.binary = binary
         self.stochastic = stochastic
@@ -224,6 +225,7 @@ class DenseLayer_Fanin_Limited(lasagne.layers.DenseLayer):
         num_inputs = int(np.prod(incoming.output_shape[1:]))
         self.num_groups = int(np.ceil(num_inputs / max_fan_in))
         self.num_inputs = num_inputs
+        self.act_noise = act_noise
         
         
 
@@ -256,7 +258,13 @@ class DenseLayer_Fanin_Limited(lasagne.layers.DenseLayer):
         for i in range(self.num_groups):
             start_index = i * self.max_fan_in
             stop_index = np.minimum((i+1)*self.max_fan_in, self.num_inputs)
-            rvalue += binary_tanh_unit_wide(T.dot(input[:,start_index:stop_index], self.W[start_index:stop_index,:]), deterministic, self.stochastic, self._srng) * 4. # * self.W_group[i]
+            partial_sum = T.dot(input[:,start_index:stop_index], self.W[start_index:stop_index,:])
+            if self.act_noise > 0:
+                partial_sum += self._srng.normal(partial_sum.shape, avg=0.0, std=self.act_noise)
+            if deterministic and self.weight_prec == 2:
+                rvalue += binary_tanh_unit_wide(partial_sum*3, deterministic, self.stochastic, self._srng) * 4. # * self.W_group[i]
+            else:
+                rvalue += binary_tanh_unit_wide(partial_sum, deterministic, self.stochastic, self._srng) * 4. # * self.W_group[i]
             #rvalue += T.dot(input[:,start_index:stop_index], self.W[start_index:stop_index,:]) # * self.W_group[i]
         rvalue += self.b
         rvalue = self.nonlinearity(rvalue)
@@ -314,7 +322,7 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
 class Conv2DLayer_Fanin_Limited(lasagne.layers.Conv2DLayer):
     
     def __init__(self, incoming, num_filters, filter_size, max_fan_in =64,
-        binary = True, stochastic = True, H=1.,W_LR_scale="Glorot", weight_prec=1, **kwargs):
+        binary = True, stochastic = True, H=1.,W_LR_scale="Glorot", weight_prec=1, act_noise=0, **kwargs):
         
         self.binary = binary
         self.stochastic = stochastic
@@ -338,6 +346,7 @@ class Conv2DLayer_Fanin_Limited(lasagne.layers.Conv2DLayer):
             # print("W_LR_scale = "+str(self.W_LR_scale))
             
         self._srng = RandomStreams(lasagne.random.get_rng().randint(1, 2147462579))
+        self.act_noise = act_noise
             
         if self.binary:
             super(Conv2DLayer_Fanin_Limited, self).__init__(incoming, num_filters, filter_size, W=lasagne.init.Uniform((-self.H,self.H)), **kwargs)   
@@ -363,8 +372,14 @@ class Conv2DLayer_Fanin_Limited(lasagne.layers.Conv2DLayer):
             input_shape = (self.input_shape[0], stop_index - start_index, self.input_shape[2], self.input_shape[3])
             W_shape = self.get_W_shape()
             W_shape_new = (W_shape[0], stop_index - start_index, W_shape[2], W_shape[3])
-            convolved += binary_tanh_unit_wide(self.convolution(input[:,start_index:stop_index,:,:], self.W[:,start_index:stop_index,:,:],
-                        input_shape, W_shape_new, subsample=self.stride, border_mode=border_mode, filter_flip=self.flip_filters, **kwargs), deterministic, self.stochastic, self._srng) * 4.  # * self.W_group[i]
+            partial_sum = self.convolution(input[:,start_index:stop_index,:,:], self.W[:,start_index:stop_index,:,:],
+                        input_shape, W_shape_new, subsample=self.stride, border_mode=border_mode, filter_flip=self.flip_filters, **kwargs)
+            if self.act_noise > 0:
+                partial_sum += self._srng.normal(partial_sum.shape, avg=0.0, std=self.act_noise)
+            if deterministic and self.weight_prec == 2:
+                convolved += binary_tanh_unit_wide(partial_sum * 3, deterministic, self.stochastic, self._srng) * 4.  # * self.W_group[i]
+            else:
+                convolved += binary_tanh_unit_wide(partial_sum, deterministic, self.stochastic, self._srng) * 4.  # * self.W_group[i]
             #convolved += self.convolution(input[:,start_index:stop_index,:,:], self.W[:,start_index:stop_index,:,:],
             #            input_shape, W_shape_new, subsample=self.stride, border_mode=border_mode, filter_flip=self.flip_filters, **kwargs)  # * self.W_group[i]
         self.W = Wr
