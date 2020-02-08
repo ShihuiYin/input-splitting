@@ -36,6 +36,7 @@ if __name__ == "__main__":
     parser.add_argument('-rf', dest='result_file', default='cifar10_test_error_list.mat', help='path to saved results')
     parser.add_argument('-sz', dest='size', default='heavy', help='model size (heavy or light)')
     parser.add_argument('-sw', dest='sim_weight_variation', type=bool, default=False, help='simulate weight variation if true')
+    parser.add_argument('-wn', dest='weight_noise', type=float, default=0.0, help='weight noise')
     parser.add_argument('-an', dest='act_noise', type=float, default=0.0, help='activation noise')
     
     args = parser.parse_args()
@@ -410,17 +411,17 @@ if __name__ == "__main__":
             print(param.name)
             if param.name[-1] == "W":
                 if weight_prec == 1:
-                    if args.sim_weight_variation:
+                    if args.weight_noise:
                         W_bin = binary_net.SignNumpy(param.get_value())
-                        W_var = W_bin * np.random.normal(loc=1.0, scale=0.02, size=W_bin.shape).astype('float32')
+                        W_var = W_bin * np.random.normal(loc=1.0, scale=args.weight_noise, size=W_bin.shape).astype('float32')
                         param.set_value(W_var)
                     else:
                         param.set_value(binary_net.SignNumpy(param.get_value()))
                 elif weight_prec == 2:
-                    if args.sim_weight_variation:
+                    if args.weight_noise > 0:
                         W_quat = binary_net.QuaternaryNumpy(param.get_value())
-                        W_var = W_quat * (abs(W_quat) == 1./3).astype('float32') * np.random.normal(loc=1.0, scale=0.2, size=W_quat.shape)
-                        W_var += W_quat * (abs(W_quat) == 1.0).astype('float32') * np.random.normal(loc=1.0, scale=0.04, size=W_quat.shape)
+                        W_var = W_quat * (abs(W_quat) == 1./3).astype('float32') * np.random.normal(loc=1.0, scale=args.weight_noise, size=W_quat.shape)
+                        W_var += W_quat * (abs(W_quat) == 1.0).astype('float32') * np.random.normal(loc=1.0, scale=args.weight_noise, size=W_quat.shape)
                         param.set_value(W_var.astype('float32'))
                     else:
                         param.set_value(binary_net.QuaternaryNumpy(param.get_value()))
