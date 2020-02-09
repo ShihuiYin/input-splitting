@@ -157,7 +157,8 @@ def quaternarization(W,H,binary=True,deterministic=False,stochastic=False,srng=N
 class DenseLayer(lasagne.layers.DenseLayer):
     
     def __init__(self, incoming, num_units, 
-        binary = True, stochastic = True, H=1.,W_LR_scale="Glorot", weight_prec=1, **kwargs):
+        binary = True, stochastic = True, H=1.,W_LR_scale="Glorot", weight_prec=1, 
+        max_fan_in = 64, act_noise=0, **kwargs):
         
         self.binary = binary
         self.stochastic = stochastic
@@ -274,7 +275,8 @@ class DenseLayer_Fanin_Limited(lasagne.layers.DenseLayer):
 class Conv2DLayer(lasagne.layers.Conv2DLayer):
     
     def __init__(self, incoming, num_filters, filter_size,
-        binary = True, stochastic = True, H=1.,W_LR_scale="Glorot", weight_prec=1, **kwargs):
+        binary = True, stochastic = True, H=1.,W_LR_scale="Glorot", weight_prec=1, 
+        max_fan_in=64, act_noise=0, **kwargs):
         
         self.binary = binary
         self.stochastic = stochastic
@@ -319,8 +321,8 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
         
 class Conv2DLayer_Fanin_Limited(lasagne.layers.Conv2DLayer):
     
-    def __init__(self, incoming, num_filters, filter_size, max_fan_in =64,
-        binary = True, stochastic = True, H=1.,W_LR_scale="Glorot", weight_prec=1, act_noise=0, **kwargs):
+    def __init__(self, incoming, num_filters, filter_size, max_fan_in=64,
+        binary=True, stochastic=True, H=1.,W_LR_scale="Glorot", weight_prec=1, act_noise=0, **kwargs):
         
         self.binary = binary
         self.stochastic = stochastic
