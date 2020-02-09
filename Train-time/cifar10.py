@@ -23,6 +23,7 @@ from collections import OrderedDict
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CIFAR10 with input-splitting", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-is', dest='input_splitting', type=bool, default=True, help='enable input splitting if true')
     parser.add_argument('-bs', dest='batch_size', type=int, default=100, help='batch size')
     parser.add_argument('-sp', dest='save_path', default='cifar10_parameters.npz', help='path to saved model')
     parser.add_argument('-ne', dest='num_epochs', type=int, default=500, help='number of epochs')
@@ -43,6 +44,12 @@ if __name__ == "__main__":
     
     print (args)
     # BN parameters
+    if args.input_splitting:
+        Conv2DLayer_Fanin_Limited = binary_net.Conv2DLayer_Fanin_Limited
+        DenseLayer_Fanin_Limited = binary_net.DenseLayer_Fanin_Limited
+    else:
+        Conv2DLayer_Fanin_Limited = binary_net.Conv2DLayer
+        DenseLayer_Fanin_Limited = binary_net.DenseLayer
     weight_prec = args.weight_prec
     act_noise = args.act_noise
     batch_size = args.batch_size
@@ -160,7 +167,7 @@ if __name__ == "__main__":
             cnn,
             nonlinearity=activation) 
             
-    cnn = binary_net.Conv2DLayer_Fanin_Limited(
+    cnn = Conv2DLayer_Fanin_Limited(
             cnn, 
             binary=binary,
             stochastic=stochastic,
@@ -186,7 +193,7 @@ if __name__ == "__main__":
             nonlinearity=activation) 
             
     # 256C3-256C3-P2             
-    cnn = binary_net.Conv2DLayer_Fanin_Limited(
+    cnn = Conv2DLayer_Fanin_Limited(
             cnn, 
             binary=binary,
             stochastic=stochastic,
@@ -209,7 +216,7 @@ if __name__ == "__main__":
             cnn,
             nonlinearity=activation) 
             
-    cnn = binary_net.Conv2DLayer_Fanin_Limited(
+    cnn = Conv2DLayer_Fanin_Limited(
             cnn, 
             binary=binary,
             stochastic=stochastic,
@@ -235,7 +242,7 @@ if __name__ == "__main__":
             nonlinearity=activation) 
             
     # 512C3-512C3-P2              
-    cnn = binary_net.Conv2DLayer_Fanin_Limited(
+    cnn = Conv2DLayer_Fanin_Limited(
             cnn, 
             binary=binary,
             stochastic=stochastic,
@@ -258,7 +265,7 @@ if __name__ == "__main__":
             cnn,
             nonlinearity=activation) 
                   
-    cnn = binary_net.Conv2DLayer_Fanin_Limited(
+    cnn = Conv2DLayer_Fanin_Limited(
             cnn, 
             binary=binary,
             stochastic=stochastic,
@@ -286,7 +293,7 @@ if __name__ == "__main__":
     # print(cnn.output_shape)
     
     # 1024FP-1024FP-10FP            
-    cnn = binary_net.DenseLayer_Fanin_Limited(
+    cnn = DenseLayer_Fanin_Limited(
                 cnn, 
                 binary=binary,
                 stochastic=stochastic,
@@ -308,7 +315,7 @@ if __name__ == "__main__":
             cnn,
             nonlinearity=activation) 
             
-    cnn = binary_net.DenseLayer_Fanin_Limited(
+    cnn = DenseLayer_Fanin_Limited(
                 cnn, 
                 binary=binary,
                 stochastic=stochastic,
@@ -330,7 +337,7 @@ if __name__ == "__main__":
             cnn,
             nonlinearity=activation) 
     
-    cnn = binary_net.DenseLayer_Fanin_Limited(
+    cnn = DenseLayer_Fanin_Limited(
                 cnn, 
                 binary=binary,
                 stochastic=stochastic,
