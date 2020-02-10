@@ -64,8 +64,11 @@ if __name__ == "__main__":
             levels = data['levels'].astype('float32')
         else:
             levels = np.array([-1., 1.], dtype='float32')
+        num_levels = len(levels)
     binary_net.prob = theano.shared(prob, name='prob', borrow=True)
     binary_net.levels = theano.shared(levels, name='levels', borrow=True)
+    binary_net.num_levels = num_levels
+    binary_net.edges = (levels[0:num_levels-1] + levels[1:num_levels])/2.
     num_rows = args.num_rows
     
     if args.input_splitting:
