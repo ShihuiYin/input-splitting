@@ -59,6 +59,8 @@ num_rows = prob.shape[0] - 1
 prob = theano.shared(prob, name='prob', borrow=True)
 levels = np.array([-1., 1.], dtype='float32')
 levels = theano.shared(levels, name='levels', borrow=True)
+levels_val = levels.get_value()
+num_levels = len(levels_val)
 
 def stochastic_round1(x, srng):
     x_int = T.cast(x / 2 + num_rows / 2, 'int32')
@@ -70,19 +72,29 @@ def stochastic_round(x, srng):
     prob_x = 2. * T.cast(T.ge(prob[x_int], srng.uniform(low=0., high=1., size=T.shape(x))), theano.config.floatX) - 1.
     return prob_x
 
-def quant(x, srng):
+def quant_stoch(x, srng):
     '''
     Stochastically quantize x according to the prob table and quantization levels defined above
     '''
     x_int = T.cast(x / 2 + num_rows / 2, 'int32')
-    levels_val = levels.get_value()
-    num_levels = len(levels_val)
     x_cdf = prob[x_int, 0:num_levels-1].cumsum(axis=-1)
     x_rand = srng.uniform(low=0., high=1., size=T.shape(x))
     x_rand = T.stack([x_rand] * (num_levels-1), axis=-1)
     x_comp = T.cast(T.ge(x_rand, x_cdf), 'int32').sum(axis=-1)
     y = levels[x_comp]
     return y
+
+def quant_det(x, srng=None):
+    '''
+    Stochastically quantize x according to the prob table and quantization levels defined above
+    '''
+    x_comp = 0
+    for i in range(num_levels - 1):
+        x_comp += T.cast(T.ge(x, edges[i]), 'int32')
+    y = levels[x_comp]
+    return y
+
+quant = quant_det
 
 def get_ideal_quant_prob_levels(num_levels, first_level, level_interval, lower_bound, step_size=2):
     last_level = first_level + level_interval * (num_levels - 1)
