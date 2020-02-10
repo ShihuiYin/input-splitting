@@ -35,7 +35,7 @@ if __name__ == "__main__":
     parser.add_argument('-nr', dest='num_rows', type=int, default=64, help='number of rows for mapping')
     parser.add_argument('-mc', dest='monte_carlo', type=int, default=1, help='number of monte carlo runs')
     parser.add_argument('-rf', dest='result_file', default='cifar10_test_error_list.mat', help='path to saved results')
-    parser.add_argument('-sz', dest='size', default='heavy', help='model size (heavy or light)')
+    parser.add_argument('-sz', dest='size', default='heavy', help='model size (heavy, light or alexnet)')
     parser.add_argument('-sw', dest='sim_weight_variation', type=bool, default=False, help='simulate weight variation if true')
     parser.add_argument('-wn', dest='weight_noise', type=float, default=0.0, help='weight noise')
     parser.add_argument('-an', dest='act_noise', type=float, default=0.0, help='activation noise')
@@ -133,8 +133,13 @@ if __name__ == "__main__":
     print('Building the CNN...') 
     if args.size == 'heavy':
         sizes = [126, 126, 252, 252, 504, 512, 1024, 1024, 10]
+        layers = ['c', 'cm', 'c', 'cm', 'c', 'cm', 'f', 'f', 'f']
     elif args.size == 'light':
         sizes = [126, 126, 189, 189, 252, 256, 512, 512, 10]
+        layers = ['c', 'cm', 'c', 'cm', 'c', 'cm', 'f', 'f', 'f']
+    elif args.size == 'alexnet':
+        sizes = [91, 252, 378, 378, 256, 1024, 1024, 10]
+        layers = ['cm', 'cm', 'c', 'c', 'cm', 'f', 'f', 'f']
     
     # Prepare Theano variables for inputs and targets
     input = T.tensor4('inputs')
@@ -144,216 +149,57 @@ if __name__ == "__main__":
     cnn = lasagne.layers.InputLayer(
             shape=(None, 3, 32, 32),
             input_var=input)
-    
-    # 128C3-128C3-P2             
-    cnn = binary_net.Conv2DLayer(
-            cnn, 
-            binary=binary,
-            stochastic=stochastic,
-            weight_prec=weight_prec,
-            H=H,
-            W_LR_scale=W_LR_scale,
-            num_filters=sizes[0], 
-            filter_size=(3, 3),
-            pad=1,
-            nonlinearity=lasagne.nonlinearities.identity)
-    
-    cnn = lasagne.layers.BatchNormLayer(
-            cnn,
-            epsilon=epsilon, 
-            alpha=alpha)
-                
-    cnn = lasagne.layers.NonlinearityLayer(
-            cnn,
-            nonlinearity=activation) 
-            
-    cnn = Conv2DLayer_Fanin_Limited(
-            cnn, 
-            binary=binary,
-            stochastic=stochastic,
-            weight_prec=weight_prec,
-            H=H,
-            W_LR_scale=W_LR_scale,
-            max_fan_in=num_rows,
-            num_filters=sizes[1], 
-            filter_size=(3, 3),
-            pad=1,
-            act_noise=act_noise,
-            nonlinearity=lasagne.nonlinearities.identity)
-    
-    cnn = lasagne.layers.MaxPool2DLayer(cnn, pool_size=(2, 2))
-    
-    cnn = lasagne.layers.BatchNormLayer(
-            cnn,
-            epsilon=epsilon, 
-            alpha=alpha)
-                
-    cnn = lasagne.layers.NonlinearityLayer(
-            cnn,
-            nonlinearity=activation) 
-            
-    # 256C3-256C3-P2             
-    cnn = Conv2DLayer_Fanin_Limited(
-            cnn, 
-            binary=binary,
-            stochastic=stochastic,
-            weight_prec=weight_prec,
-            H=H,
-            W_LR_scale=W_LR_scale,
-            max_fan_in=num_rows,
-            num_filters=sizes[2], 
-            filter_size=(3, 3),
-            pad=1,
-            act_noise=act_noise,
-            nonlinearity=lasagne.nonlinearities.identity)
-    
-    cnn = lasagne.layers.BatchNormLayer(
-            cnn,
-            epsilon=epsilon, 
-            alpha=alpha)
-                
-    cnn = lasagne.layers.NonlinearityLayer(
-            cnn,
-            nonlinearity=activation) 
-            
-    cnn = Conv2DLayer_Fanin_Limited(
-            cnn, 
-            binary=binary,
-            stochastic=stochastic,
-            weight_prec=weight_prec,
-            H=H,
-            W_LR_scale=W_LR_scale,
-            max_fan_in=num_rows,
-            num_filters=sizes[3], 
-            filter_size=(3, 3),
-            pad=1,
-            act_noise=act_noise,
-            nonlinearity=lasagne.nonlinearities.identity)
-    
-    cnn = lasagne.layers.MaxPool2DLayer(cnn, pool_size=(2, 2))
-    
-    cnn = lasagne.layers.BatchNormLayer(
-            cnn,
-            epsilon=epsilon, 
-            alpha=alpha)
-                
-    cnn = lasagne.layers.NonlinearityLayer(
-            cnn,
-            nonlinearity=activation) 
-            
-    # 512C3-512C3-P2              
-    cnn = Conv2DLayer_Fanin_Limited(
-            cnn, 
-            binary=binary,
-            stochastic=stochastic,
-            weight_prec=weight_prec,
-            H=H,
-            W_LR_scale=W_LR_scale,
-            max_fan_in=num_rows,
-            num_filters=sizes[4], 
-            filter_size=(3, 3),
-            pad=1,
-            act_noise=act_noise,
-            nonlinearity=lasagne.nonlinearities.identity)
-    
-    cnn = lasagne.layers.BatchNormLayer(
-            cnn,
-            epsilon=epsilon, 
-            alpha=alpha)
-                
-    cnn = lasagne.layers.NonlinearityLayer(
-            cnn,
-            nonlinearity=activation) 
-                  
-    cnn = Conv2DLayer_Fanin_Limited(
-            cnn, 
-            binary=binary,
-            stochastic=stochastic,
-            weight_prec=weight_prec,
-            H=H,
-            W_LR_scale=W_LR_scale,
-            max_fan_in=num_rows,
-            num_filters=sizes[5], 
-            filter_size=(3, 3),
-            pad=1,
-            act_noise=act_noise,
-            nonlinearity=lasagne.nonlinearities.identity)
-    
-    cnn = lasagne.layers.MaxPool2DLayer(cnn, pool_size=(2, 2))
-    
-    cnn = lasagne.layers.BatchNormLayer(
-            cnn,
-            epsilon=epsilon, 
-            alpha=alpha)
-                
-    cnn = lasagne.layers.NonlinearityLayer(
-            cnn,
-            nonlinearity=activation) 
-    
-    # print(cnn.output_shape)
-    
-    # 1024FP-1024FP-10FP            
-    cnn = DenseLayer_Fanin_Limited(
-                cnn, 
-                binary=binary,
-                stochastic=stochastic,
-                weight_prec=weight_prec,
-                H=H,
-                W_LR_scale=W_LR_scale,
-                max_fan_in=num_rows,
-                nonlinearity=lasagne.nonlinearities.identity,
-                name='FC1',
-                act_noise=act_noise,
-                num_units=sizes[6])      
-                  
-    cnn = lasagne.layers.BatchNormLayer(
-            cnn,
-            epsilon=epsilon, 
-            alpha=alpha)
-                
-    cnn = lasagne.layers.NonlinearityLayer(
-            cnn,
-            nonlinearity=activation) 
-            
-    cnn = DenseLayer_Fanin_Limited(
-                cnn, 
-                binary=binary,
-                stochastic=stochastic,
-                weight_prec=weight_prec,
-                H=H,
-                W_LR_scale=W_LR_scale,
-                max_fan_in=num_rows,
-                nonlinearity=lasagne.nonlinearities.identity,
-                name='FC2',
-                act_noise=act_noise,
-                num_units=sizes[7])      
-                  
-    cnn = lasagne.layers.BatchNormLayer(
-            cnn,
-            epsilon=epsilon, 
-            alpha=alpha)
-                
-    cnn = lasagne.layers.NonlinearityLayer(
-            cnn,
-            nonlinearity=activation) 
-    
-    cnn = DenseLayer_Fanin_Limited(
-                cnn, 
-                binary=binary,
-                stochastic=stochastic,
-                weight_prec=weight_prec,
-                H=H,
-                W_LR_scale=W_LR_scale,
-                max_fan_in=num_rows,
-                nonlinearity=lasagne.nonlinearities.identity,
-                name='FC3',
-                act_noise=act_noise,
-                num_units=10)      
-                  
-    cnn = lasagne.layers.BatchNormLayer(
-            cnn,
-            epsilon=epsilon, 
-            alpha=alpha)
+   
+    for i in range(len(sizes)):
+        if i == 0:
+            cnn = binary_net.Conv2DLayer(
+                    cnn, 
+                    binary=binary,
+                    stochastic=stochastic,
+                    weight_prec=weight_prec,
+                    H=H,
+                    W_LR_scale=W_LR_scale,
+                    num_filters=sizes[0], 
+                    filter_size=(3, 3),
+                    pad=1,
+                    nonlinearity=lasagne.nonlinearities.identity)
+        else:
+            if layers[i] == 'c' or layers[i] == 'cm':
+                cnn = Conv2DLayer_Fanin_Limited(
+                        cnn, 
+                        binary=binary,
+                        stochastic=stochastic,
+                        weight_prec=weight_prec,
+                        H=H,
+                        W_LR_scale=W_LR_scale,
+                        max_fan_in=num_rows,
+                        num_filters=sizes[i], 
+                        filter_size=(3, 3),
+                        pad=1,
+                        act_noise=act_noise,
+                        nonlinearity=lasagne.nonlinearities.identity)
+            else:
+                cnn = DenseLayer_Fanin_Limited(
+                        cnn, 
+                        binary=binary,
+                        stochastic=stochastic,
+                        weight_prec=weight_prec,
+                        H=H,
+                        W_LR_scale=W_LR_scale,
+                        max_fan_in=num_rows,
+                        nonlinearity=lasagne.nonlinearities.identity,
+                        act_noise=act_noise,
+                        num_units=sizes[i])      
+        if layers[i] == 'cm':
+            cnn = lasagne.layers.MaxPool2DLayer(cnn, pool_size=(2, 2))
+        cnn = lasagne.layers.BatchNormLayer(
+                cnn,
+                epsilon=epsilon, 
+                alpha=alpha)
+        if i < len(sizes) - 1:
+            cnn = lasagne.layers.NonlinearityLayer(
+                    cnn,
+                    nonlinearity=activation) 
 
     train_output = lasagne.layers.get_output(cnn, deterministic=False)
     
