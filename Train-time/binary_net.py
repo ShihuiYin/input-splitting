@@ -354,7 +354,7 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
                     partial_sum *= 3.
                 if self.act_noise > 0:
                     partial_sum += self._srng.normal(partial_sum.shape, avg=0.0, std=self.act_noise)
-                rvalue = quant(partial_sum, self._srng)
+                rvalue += quant(partial_sum, self._srng)
             if self.weight_prec == 2:
                 rvalue /= 3.
         else:
