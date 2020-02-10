@@ -52,10 +52,14 @@ def binary_activation(x):
 
 import scipy.io as sio
 #data = sio.loadmat('prob_chip14_column0_24k_single_SA_0p8V.mat') # for 1-bit weight
+# Below are default prob table settings, overwrite it in the main script for other settings
 data = sio.loadmat('prob_2bW_chip14.mat') # for 2-bit weight
 prob = data['prob'][:,0].astype('float32')
 num_rows = prob.shape[0] - 1
 prob = theano.shared(prob, name='prob', borrow=True)
+levels = np.array([-1., 1.], dtype='float32')
+levels = theano.shared(levels, name='levels', borrow=True)
+
 def stochastic_round1(x, srng):
     x_int = T.cast(x / 2 + num_rows / 2, 'int32')
     prob_x = T.cast(srng.binomial(n=1, p=prob[x_int], size=T.shape(x)), theano.config.floatX) - 1.
@@ -65,6 +69,20 @@ def stochastic_round(x, srng):
     x_int = T.cast(x / 2 + num_rows / 2, 'int32')
     prob_x = 2. * T.cast(T.ge(prob[x_int], srng.uniform(low=0., high=1., size=T.shape(x))), theano.config.floatX) - 1.
     return prob_x
+
+def quant(x, srng):
+    '''
+    Stochastically quantize x according to the prob table and quantization levels defined above
+    '''
+    x_int = T.cast(x / 2 + num_rows / 2, 'int32')
+    num_levels = len(levels)
+    x_cdf = prob[x_int, 0:num_levels-1].cumsum(axis=-1)
+    x_rand = srng.uniform(low=0., high=1., size=T.shape(x))
+    x_rand = T.stack([x_rand] * (num_levels-1), axis=-1)
+    x_comp = T.cast(T.ge(x_rand, x_cdf), 'int32').sum(axis=-1)
+    y = levels[x_comp]
+    return y
+    
     
 def binary_tanh_unit_wide(x, deterministic=False, stochastic=False, srng=None):
     if not deterministic:
@@ -77,37 +95,6 @@ def binary_tanh_unit_wide(x, deterministic=False, stochastic=False, srng=None):
         return stochastic_round(x, srng)
 
     
-def binary_sigmoid_unit(x):
-    return round3(hard_sigmoid(x))
-
-def ternary_tanh_unit(x):
-    return round3(T.clip(x, -1, 1))    
-def quad_tanh_unit(x):
-    return round3(T.clip((x + 1.) * 1.5, 0, 3)) / 1.5 - 1.
-
-def oct_tanh_unit(x):
-    return round3(T.clip((x + 1.) * 3.5, 0, 7)) / 3.5 - 1.
-
-def hex_tanh_unit(x):
-    return round3(T.clip((x + 1.) * 7.5, 0, 15)) / 7.5 - 1.
-def relu_2bit_normed(x):
-    return round3(T.clip(x*2., 0, 3))/2.
-def relu_3bit_normed(x):
-    return round3(T.clip(x*4., 0, 7))/4.
-def relu_4bit_normed(x):
-    return round3(T.clip(x*8., 0, 15))/8.
-def relu_8bit_normed(x):
-    return round3(T.clip(x*32, 0, 127))/32.
-def sym_2bit(x):
-    return round3(T.clip(x + 3/2., 0, 3)) - 3/2.
-def sym_3bit(x):
-    return round3(T.clip(2*(x+7/4.), 0, 7))/2. - 7/4.
-def sym_4bit(x):
-    return round3(T.clip(4*(x+15/8.), 0, 15))/4. - 15/8.
-def twos_3bit(x):
-    return round3(T.clip(3*(x+1.), 0, 6))/3. - 1.
-def twos_4bit(x):
-    return round3(T.clip(7*(x+1.), 0, 14))/7. - 1.
 def SignNumpy(x):
     return np.float32(2.*np.greater_equal(x,0)-1.)
 def QuaternaryNumpy(x):
@@ -158,13 +145,14 @@ class DenseLayer(lasagne.layers.DenseLayer):
     
     def __init__(self, incoming, num_units, 
         binary = True, stochastic = True, H=1.,W_LR_scale="Glorot", weight_prec=1, 
-        max_fan_in = 64, act_noise=0, **kwargs):
+        max_fan_in = -1, act_noise=0, **kwargs):
         
         self.binary = binary
         self.stochastic = stochastic
         
         self.H = H
         self.weight_prec = weight_prec
+        self.act_noise = act_noise
         if H == "Glorot":
             num_inputs = int(np.prod(incoming.output_shape[1:]))
             self.H = np.float32(np.sqrt(1.5/ (num_inputs + num_units)))
@@ -174,6 +162,10 @@ class DenseLayer(lasagne.layers.DenseLayer):
         if W_LR_scale == "Glorot":
             num_inputs = int(np.prod(incoming.output_shape[1:]))
             self.W_LR_scale = np.float32(1./np.sqrt(1.5/ (num_inputs + num_units)))
+        self.max_fan_in = max_fan_in
+        if self.max_fan_in > 0:
+            self.num_groups = int(np.ceil(num_inputs / max_fan_in))
+            self.num_inputs = num_inputs
 
         self._srng = RandomStreams(lasagne.random.get_rng().randint(1, 2147462579))
         
@@ -193,8 +185,29 @@ class DenseLayer(lasagne.layers.DenseLayer):
 
         Wr = self.W
         self.W = self.Wb
+        if self.max_fan_in > 0:
+            num_leading_axes = self.num_leading_axes
+            if num_leading_axes < 0:
+                num_leading_axes += input.ndim
+            if input.ndim > num_leading_axes + 1:
+                input = input.flatten(num_leading_axes + 1)
             
-        rvalue = super(DenseLayer, self).get_output_for(input, **kwargs)
+            rvalue = 0
+            for i in range(self.num_groups):
+                start_index = i * self.max_fan_in
+                stop_index = np.minimum((i+1)*self.max_fan_in, self.num_inputs)
+                partial_sum = T.dot(input[:,start_index:stop_index], self.W[start_index:stop_index,:])
+                if self.weight_prec == 2:
+                    partial_sum *= 3.
+                if self.act_noise > 0:
+                    partial_sum += self._srng.normal(partial_sum.shape, avg=0.0, std=self.act_noise)
+                rvalue += quant(partial_sum, self._srng)
+            if self.weight_prec == 2:
+                rvalue /= 3.
+            rvalue += self.b
+            rvalue = self.nonlinearity(rvalue)
+        else:
+            rvalue = super(DenseLayer, self).get_output_for(input, **kwargs)
         
         self.W = Wr
         
@@ -295,7 +308,14 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
             num_units = int(np.prod(filter_size)*num_filters) # theoretically, I should divide num_units by the pool_shape
             self.W_LR_scale = np.float32(1./np.sqrt(1.5 / (num_inputs + num_units)))
             # print("W_LR_scale = "+str(self.W_LR_scale))
+        self.max_fan_in = max_fan_in
+        if self.max_fan_in > 0:
+            self.num_channels_per_array = int(np.floor(max_fan_in / np.prod(filter_size).astype('float32')))
+            self.num_arrays = int(np.ceil(incoming.output_shape[1] / self.num_channels_per_array))
+            self.num_channels = incoming.output_shape[1]
+            print("Number of arrays: %d" % self.num_arrays)
             
+        self.act_noise = act_noise
         self._srng = RandomStreams(lasagne.random.get_rng().randint(1, 2147462579))
             
         if self.binary:
@@ -312,8 +332,26 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
             self.Wb = quaternarization(self.W,self.H,self.binary,deterministic,self.stochastic,self._srng)
         Wr = self.W
         self.W = self.Wb
-            
-        rvalue = super(Conv2DLayer, self).convolve(input, **kwargs)
+        if self.max_fan_in > 0:            
+            border_mode = 'half' if self.pad == 'same' else self.pad
+            convolved = 0
+            for i in range(self.num_arrays):
+                start_index = i * self.num_channels_per_array
+                stop_index = np.minimum((i+1)*self.num_channels_per_array, self.num_channels)
+                input_shape = (self.input_shape[0], stop_index - start_index, self.input_shape[2], self.input_shape[3])
+                W_shape = self.get_W_shape()
+                W_shape_new = (W_shape[0], stop_index - start_index, W_shape[2], W_shape[3])
+                partial_sum = self.convolution(input[:,start_index:stop_index,:,:], self.W[:,start_index:stop_index,:,:],
+                            input_shape, W_shape_new, subsample=self.stride, border_mode=border_mode, filter_flip=self.flip_filters, **kwargs)
+                if self.weight_prec == 2:
+                    partial_sum *= 3.
+                if self.act_noise > 0:
+                    partial_sum += self._srng.normal(partial_sum.shape, avg=0.0, std=self.act_noise)
+                rvalue = quant(partial_sum, self._srng)
+            if self.weight_prec == 2:
+                rvalue /= 3.
+        else:
+            rvalue = super(Conv2DLayer, self).convolve(input, **kwargs)
         
         self.W = Wr
         
