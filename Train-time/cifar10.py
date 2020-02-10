@@ -54,13 +54,17 @@ if __name__ == "__main__":
     else:
         levels = np.array([-1., 1.], dtype='float32')
     binary_net.levels = theano.shared(levels, name='levels', borrow=True)
+    num_rows = args.num_rows
     
     if args.input_splitting:
         Conv2DLayer_Fanin_Limited = binary_net.Conv2DLayer_Fanin_Limited
         DenseLayer_Fanin_Limited = binary_net.DenseLayer_Fanin_Limited
+        print("Split inputs in groups of %d" % num_rows)
     else:
         Conv2DLayer_Fanin_Limited = binary_net.Conv2DLayer
         DenseLayer_Fanin_Limited = binary_net.DenseLayer
+        if args.train:
+            num_rows = 0
     weight_prec = args.weight_prec
     act_noise = args.act_noise
     batch_size = args.batch_size
@@ -76,7 +80,6 @@ if __name__ == "__main__":
     print("activation = binary_net.binary_tanh_unit")
     # activation = binary_net.binary_sigmoid_unit
     # print("activation = binary_net.binary_sigmoid_unit")
-    num_rows = args.num_rows
     # BinaryConnect    
     binary = args.train
     print("binary = "+str(binary))
@@ -171,6 +174,8 @@ if __name__ == "__main__":
                     H=H,
                     W_LR_scale=W_LR_scale,
                     num_filters=sizes[0], 
+                    max_fan_in=0,
+                    act_noise=act_noise,
                     filter_size=(3, 3),
                     pad=1,
                     nonlinearity=lasagne.nonlinearities.identity)
