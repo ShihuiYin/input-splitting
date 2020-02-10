@@ -277,10 +277,9 @@ if __name__ == "__main__":
         # Binarize the weights
         params = lasagne.layers.get_all_params(cnn)
         for param in params:
-            print(param.name)
             if param.name[-1] == "W":
                 if weight_prec == 1:
-                    if args.weight_noise:
+                    if args.weight_noise > 0:
                         W_bin = binary_net.SignNumpy(param.get_value())
                         W_var = W_bin * np.random.normal(loc=1.0, scale=args.weight_noise, size=W_bin.shape).astype('float32')
                         param.set_value(W_var)
