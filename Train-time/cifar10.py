@@ -34,6 +34,7 @@ if __name__ == "__main__":
     parser.add_argument('-st', dest='stochastic', type=bool, default=False, help='stochastic')
     parser.add_argument('-nr', dest='num_rows', type=int, default=64, help='number of rows for mapping')
     parser.add_argument('-mc', dest='monte_carlo', type=int, default=1, help='number of monte carlo runs')
+    parser.add_argument('-pf', dest='prob_file', default='prob_2bW_chip14.mat', help='prob table file')
     parser.add_argument('-rf', dest='result_file', default='cifar10_test_error_list.mat', help='path to saved results')
     parser.add_argument('-sz', dest='size', default='heavy', help='model size (heavy, light or alexnet)')
     parser.add_argument('-sw', dest='sim_weight_variation', type=bool, default=False, help='simulate weight variation if true')
@@ -44,6 +45,16 @@ if __name__ == "__main__":
     
     print (args)
     # BN parameters
+    data = sio.loadmat(args.prob_file)
+    prob = data['prob'].astype('float32')
+    binary_net.num_rows = prob.shape[0] - 1
+    binary_net.prob = theano.shared(prob, name='prob', borrow=True)
+    if 'levels' in data:
+        levels = data['levels'].astype('float32')
+    else:
+        levels = np.array([-1., 1.], dtype='float32')
+    binary_net.levels = theano.shared(levels, name='levels', borrow=True)
+    
     if args.input_splitting:
         Conv2DLayer_Fanin_Limited = binary_net.Conv2DLayer_Fanin_Limited
         DenseLayer_Fanin_Limited = binary_net.DenseLayer_Fanin_Limited
