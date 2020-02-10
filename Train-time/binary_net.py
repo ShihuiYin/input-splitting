@@ -88,10 +88,8 @@ def binary_tanh_unit_wide(x, deterministic=False, stochastic=False, srng=None):
     if not deterministic:
         return binary_tanh_unit(x/20.)
     if not stochastic:
-        print("deterministic binarization applied!")
         return binary_tanh_unit(x/20.)
     else:
-        print("Stochastic binarization applied!")
         return stochastic_round(x, srng)
 
     
@@ -334,7 +332,7 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
         self.W = self.Wb
         if self.max_fan_in > 0:            
             border_mode = 'half' if self.pad == 'same' else self.pad
-            convolved = 0
+            rvalue = 0
             for i in range(self.num_arrays):
                 start_index = i * self.num_channels_per_array
                 stop_index = np.minimum((i+1)*self.num_channels_per_array, self.num_channels)
@@ -371,7 +369,6 @@ class Conv2DLayer_Fanin_Limited(lasagne.layers.Conv2DLayer):
             num_inputs = int(np.prod(filter_size)*incoming.output_shape[1])
             num_units = int(np.prod(filter_size)*num_filters) # theoretically, I should divide num_units by the pool_shape
             self.H = np.float32(np.sqrt(1.5 / (num_inputs + num_units)))
-            # print("H = "+str(self.H))
         self.num_channels_per_array = int(np.floor(max_fan_in / np.prod(filter_size).astype('float32')))
         self.num_arrays = int(np.ceil(incoming.output_shape[1] / self.num_channels_per_array))
         self.num_channels = incoming.output_shape[1]
@@ -381,7 +378,6 @@ class Conv2DLayer_Fanin_Limited(lasagne.layers.Conv2DLayer):
             num_inputs = int(np.prod(filter_size)*incoming.output_shape[1])
             num_units = int(np.prod(filter_size)*num_filters) # theoretically, I should divide num_units by the pool_shape
             self.W_LR_scale = np.float32(1./np.sqrt(1.5 / (num_inputs + num_units)))
-            # print("W_LR_scale = "+str(self.W_LR_scale))
             
         self._srng = RandomStreams(lasagne.random.get_rng().randint(1, 2147462579))
         self.act_noise = act_noise
@@ -434,7 +430,6 @@ def compute_grads(loss,network):
     
         params = layer.get_params(binary=True)
         if params:
-            # print(params[0].name)
             grads.append(theano.grad(loss, wrt=layer.Wb))
                 
     return grads
@@ -472,7 +467,6 @@ def train(train_fn,val_fn,
     # A function which shuffles a dataset
     def shuffle(X,y):
         
-        # print(len(X))
         
         chunk_size = len(X)/shuffle_parts
         shuffled_range = range(chunk_size)
