@@ -45,14 +45,26 @@ if __name__ == "__main__":
     
     print (args)
     # BN parameters
-    data = sio.loadmat(args.prob_file)
-    prob = data['prob'].astype('float32')
-    binary_net.num_rows = prob.shape[0] - 1
-    binary_net.prob = theano.shared(prob, name='prob', borrow=True)
-    if 'levels' in data:
-        levels = data['levels'].astype('float32')
+    if args.prob_file.startswith('ideal'):
+        temp = args.prob_file.split('_')
+        num_levels = int(temp[1])
+        first_level = int(temp[2])
+        level_interval = int(temp[3])
+        last_level = first_level + level_interval * (num_levels - 1)
+        print("Generating prob table and levels for ideal uniform spaced quantization")
+        print("levels are")
+        print(range(first_level, last_level+1, level_interval))
+        lower_bound = -args.num_rows if args.weight_prec == 1 else -args.num_rows * 3
+        prob, levels = binary_net.get_ideal_quant_prob_levels(num_levels, first_level, level_interval, lower_bound)
     else:
-        levels = np.array([-1., 1.], dtype='float32')
+        data = sio.loadmat(args.prob_file)
+        prob = data['prob'].astype('float32')
+        binary_net.num_rows = prob.shape[0] - 1
+        if 'levels' in data:
+            levels = data['levels'].astype('float32')
+        else:
+            levels = np.array([-1., 1.], dtype='float32')
+    binary_net.prob = theano.shared(prob, name='prob', borrow=True)
     binary_net.levels = theano.shared(levels, name='levels', borrow=True)
     num_rows = args.num_rows
     
