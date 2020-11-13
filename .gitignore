@@ -1,4 +1,6 @@
 Run-Time
 Train-Time/*.mat
 Train-Time/*.npz
+*/*.pyc
+
 
