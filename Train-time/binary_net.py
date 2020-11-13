@@ -59,6 +59,8 @@ num_rows = prob.shape[0] - 1
 prob = theano.shared(prob, name='prob', borrow=True)
 levels = np.array([-1., 1.], dtype='float32')
 levels = theano.shared(levels, name='levels', borrow=True)
+levels_val = levels.get_value()
+num_levels = len(levels_val)
 
 def stochastic_round1(x, srng):
     x_int = T.cast(x / 2 + num_rows / 2, 'int32')
@@ -70,19 +72,43 @@ def stochastic_round(x, srng):
     prob_x = 2. * T.cast(T.ge(prob[x_int], srng.uniform(low=0., high=1., size=T.shape(x))), theano.config.floatX) - 1.
     return prob_x
 
-def quant(x, srng):
+def quant_stoch(x, srng):
     '''
     Stochastically quantize x according to the prob table and quantization levels defined above
     '''
     x_int = T.cast(x / 2 + num_rows / 2, 'int32')
-    num_levels = len(levels)
     x_cdf = prob[x_int, 0:num_levels-1].cumsum(axis=-1)
     x_rand = srng.uniform(low=0., high=1., size=T.shape(x))
     x_rand = T.stack([x_rand] * (num_levels-1), axis=-1)
     x_comp = T.cast(T.ge(x_rand, x_cdf), 'int32').sum(axis=-1)
     y = levels[x_comp]
     return y
-    
+
+def quant_det(x, srng=None):
+    '''
+    Stochastically quantize x according to the prob table and quantization levels defined above
+    '''
+    x_comp = 0
+    for i in range(num_levels - 1):
+        x_comp += T.cast(T.ge(x, edges[i]), 'int32')
+    y = levels[x_comp]
+    return y
+
+quant = quant_det
+
+def get_ideal_quant_prob_levels(num_levels, first_level, level_interval, lower_bound, step_size=2):
+    last_level = first_level + level_interval * (num_levels - 1)
+    levels = np.array([x for x in range(first_level, last_level+1, level_interval)], dtype='float32')
+    edges = (levels[0:num_levels-1] + levels[1:num_levels]) / 2.
+    num_rows = 2 * int(-lower_bound / step_size) + 1
+    prob = np.zeros((num_rows, num_levels), dtype='float32')
+    entries = np.array([x for x in range(lower_bound, -lower_bound+1, step_size)], dtype='float32')
+    entries_int = np.array([x for x in range(entries.shape[0])], dtype='int32')
+    indices = np.zeros_like(entries).astype('int32')
+    for i in range(num_levels - 1):
+        indices += (entries > edges[i]).astype('int32')
+    prob[entries_int, indices] = 1.
+    return prob, levels
     
 def binary_tanh_unit_wide(x, deterministic=False, stochastic=False, srng=None):
     if not deterministic:
@@ -106,7 +132,6 @@ def binarization(W,H,binary=True,deterministic=False,stochastic=False,srng=None)
     if not binary or (deterministic and stochastic):
         print("not binary")
         Wb = W
-        print(W.get_value())
     else:
         
         # [-1,1] -> [0,1]
@@ -154,7 +179,6 @@ class DenseLayer(lasagne.layers.DenseLayer):
         if H == "Glorot":
             num_inputs = int(np.prod(incoming.output_shape[1:]))
             self.H = np.float32(np.sqrt(1.5/ (num_inputs + num_units)))
-            # print("H = "+str(self.H))
             
         self.W_LR_scale = W_LR_scale
         if W_LR_scale == "Glorot":
@@ -226,7 +250,6 @@ class DenseLayer_Fanin_Limited(lasagne.layers.DenseLayer):
         if H == "Glorot":
             num_inputs = int(np.prod(incoming.output_shape[1:]))
             self.H = np.float32(np.sqrt(1.5/ (num_inputs + num_units)))
-            # print("H = "+str(self.H))
             
         self.W_LR_scale = W_LR_scale
         if W_LR_scale == "Glorot":
@@ -298,14 +321,12 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
             num_inputs = int(np.prod(filter_size)*incoming.output_shape[1])
             num_units = int(np.prod(filter_size)*num_filters) # theoretically, I should divide num_units by the pool_shape
             self.H = np.float32(np.sqrt(1.5 / (num_inputs + num_units)))
-            # print("H = "+str(self.H))
         
         self.W_LR_scale = W_LR_scale
         if W_LR_scale == "Glorot":
             num_inputs = int(np.prod(filter_size)*incoming.output_shape[1])
             num_units = int(np.prod(filter_size)*num_filters) # theoretically, I should divide num_units by the pool_shape
             self.W_LR_scale = np.float32(1./np.sqrt(1.5 / (num_inputs + num_units)))
-            # print("W_LR_scale = "+str(self.W_LR_scale))
         self.max_fan_in = max_fan_in
         if self.max_fan_in > 0:
             self.num_channels_per_array = int(np.floor(max_fan_in / np.prod(filter_size).astype('float32')))
@@ -345,7 +366,7 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
                     partial_sum *= 3.
                 if self.act_noise > 0:
                     partial_sum += self._srng.normal(partial_sum.shape, avg=0.0, std=self.act_noise)
-                rvalue = quant(partial_sum, self._srng)
+                rvalue += quant(partial_sum, self._srng)
             if self.weight_prec == 2:
                 rvalue /= 3.
         else:
